@@ -1,139 +1,223 @@
-# Arch Linux AI Server Checklist (Docker Compose Edition)
+## Ubuntu AI Server Checklist (Docker Compose Edition)
+
+This guide walks you through setting up a powerful, locally-hosted AI chatbot on an Ubuntu server with an NVIDIA GPU.
 
 ### Phase 1: System Preparation
 
   - [ ] **1. Update System:**
-    Ensure your system is fully up-to-date.
-    ` bash sudo pacman -Syu  `
+    Ensure all your system's packages are up-to-date.
+
+    ```bash
+    sudo apt update && sudo apt upgrade -y
+    ```
 
   - [ ] **2. Install Essential Tools:**
-    Install Git for cloning repositories and an AUR helper like `yay` to easily install packages from the Arch User Repository.
-    \`\`\`bash
-    \# Install git and base-devel for building packages
-    sudo pacman -S --needed git base-devel
+    Install `git` for managing code, `curl` for downloading files, and `build-essential` for any necessary compilations.
 
-    ````
-    # Clone and install yay (AUR Helper)
-    git clone https://aur.archlinux.org/yay.git
-    cd yay
-    makepkg -si
-    cd ..
+    ```bash
+    sudo apt install -y git curl build-essential
     ```
-    ````
 
-### Phase 2: NVIDIA Driver Installation
+-----
 
-  - [ ] **1. Install NVIDIA Drivers & CUDA Toolkit:**
-    This installs the proprietary driver for your RTX 2060 and the CUDA toolkit needed by Ollama.
-    ` bash sudo pacman -S nvidia nvidia-utils cuda  `
+### Phase 2: NVIDIA Driver & CUDA Installation
 
-  - [ ] **2. Reboot System:**
+  - [ ] **1. Install NVIDIA Drivers:**
+    The `ubuntu-drivers` command automatically finds and installs the best proprietary driver for your RTX 2060.
+
+    ```bash
+    sudo ubuntu-drivers autoinstall
+    ```
+
+  - [ ] **2. Install CUDA Toolkit:**
+    This provides the necessary libraries for GPU acceleration in AI tasks.
+
+    ```bash
+    sudo apt install -y nvidia-cuda-toolkit
+    ```
+
+  - [ ] **3. Reboot System:**
     A reboot is essential for the new kernel modules and drivers to load correctly.
-    ` bash sudo reboot  `
 
-  - [ ] **3. Verify Driver Installation:**
-    After rebooting, run this command. It should show your RTX 2060's stats, confirming the driver is working.
-    ` bash nvidia-smi  `
+    ```bash
+    sudo reboot
+    ```
 
-### Phase 3: Core AI Software Installation
+  - [ ] **4. Verify Driver Installation:**
+    After rebooting, this command should show your GPU's stats, confirming the driver is working.
 
-  - [ ] **1. Install Docker and Docker Compose:**
-    This provides the container engine and the compose tool.
-    ` bash sudo pacman -S docker docker-compose  `
+    ```bash
+    nvidia-smi
+    ```
 
-  - [ ] **2. Configure Docker Service:**
-    Start the Docker service and enable it to launch on boot.
-    ` bash sudo systemctl start docker sudo systemctl enable docker  `
+-----
+
+### Phase 3: Docker & Container Toolkit Setup
+
+  - [ ] **1. Install Docker:**
+    Follow the official steps to add Docker's repository and install the engine.
+
+    ```bash
+    # Add Docker's official GPG key:
+    sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+    # Add the repository to Apt sources:
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt update
+
+    # Install Docker Engine, CLI, Containerd, and Compose plugin
+    sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    ```
+
+  - [ ] **2. Install NVIDIA Container Toolkit:**
+    This allows Docker containers to access your GPU.
+
+    ```bash
+    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
+      && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+        sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    sudo apt update
+    sudo apt install -y nvidia-container-toolkit
+    sudo nvidia-ctk runtime configure --runtime=docker
+    sudo systemctl restart docker
+    ```
 
   - [ ] **3. Add User to Docker Group:**
-    This allows you to run Docker commands without `sudo`. **You must log out and log back in for this change to take effect.**
-    ` bash sudo usermod -aG docker $USER  `
+    This allows you to run Docker commands without `sudo`. **You must log out and log back in for this to take effect.**
 
-  - [ ] **4. Install Ollama:**
-    Using the `yay` AUR helper makes this simple.
-    ` bash yay -S ollama-cuda  `
+    ```bash
+    sudo usermod -aG docker $USER
+    ```
 
-  - [ ] **5. Enable Ollama Service:**
-    This ensures Ollama starts automatically on boot.
-    ` bash sudo systemctl enable --now ollama  `
+-----
 
-### Phase 4: Download AI Models
+### Phase 4: Ollama Installation & Configuration
 
-  - [ ] **1. Pull the "Everyday" Model:**
-    Meta's Llama 3 8B for general chat and tasks.
-    ` bash ollama pull llama3:8b  `
+  - [ ] **1. Install Ollama:**
+    The official script makes installation simple.
 
-  - [ ] **2. Pull the "Coding" Model:**
-    DeepSeek Coder for programming assistance.
-    ` bash ollama pull deepseek-coder:6.7b  `
+    ```bash
+    curl -fsSL https://ollama.com/install.sh | sh
+    ```
 
-  - [ ] **3. Pull the "Reasoning" Model:**
-    Nous Hermes 2 for more complex logic and puzzles.
-    ` bash ollama pull nous-hermes2:mistral  `
+  - [ ] **2. Configure Ollama for Remote Connections:**
+    This is the critical step to allow Open WebUI to connect to Ollama.
 
-  - [ ] **4. Verify Model Installation:**
+    ```bash
+    sudo systemctl edit ollama.service
+    ```
+
+    This will open a blank text editor. Paste the following content, then save and close the file (in `nano`, press `Ctrl+O`, `Enter`, `Ctrl+X`):
+
+    ```ini
+    [Service]
+    Environment="OLLAMA_HOST=0.0.0.0"
+    Environment="OLLAMA_ORIGINS=*"
+    ```
+
+  - [ ] **3. Apply Ollama Configuration:**
+    Reload the systemd manager and restart the Ollama service.
+
+    ```bash
+    sudo systemctl daemon-reload
+    sudo systemctl restart ollama
+    ```
+
+  - [ ] **4. Verify Ollama Configuration:**
+    Check the status and ensure the logs show it's listening on all interfaces.
+
+    ```bash
+    sudo systemctl status ollama
+    ```
+
+    Look for a line that says `msg="Listening on [::]:11434"`. This confirms it's working correctly.
+
+-----
+
+### Phase 5: Download AI Models
+
+  - [ ] **1. Pull Your Desired Models:**
+    Download a few models for different purposes.
+
+    ```bash
+    # --- General Purpose & Chat ---
+    ollama pull llama3:8b
+    ollama pull phi3:mini
+
+    # --- Reasoning & Instruction Following ---
+    ollama pull nous-hermes2:latest
+    ollama pull openhermes:latest
+
+    # --- Coding & Development ---
+    ollama pull deepseek-coder:6.7b
+    ollama pull starcoder2:3b
+    ```
+
+  - [ ] **2. Verify Model Installation:**
     List all downloaded models to confirm they are ready.
-    ` bash ollama list  `
 
-### Phase 5: Install and Configure Open WebUI (with Docker Compose)
+    ```bash
+    ollama list
+    ```
 
-  - [ ] **1. Create a Project Directory:**
-    It's good practice to keep your configuration file in a dedicated folder.
-    ` bash mkdir ~/open-webui cd ~/open-webui  `
+-----
 
-  - [ ] **2. Create the `docker-compose.yml` File:**
-    Create a new file named `docker-compose.yml` and paste the following content into it. This file declaratively defines the Open WebUI service, making it easy to manage.
-    ` bash nano docker-compose.yml  `
-    **Paste this content:**
-    \`\`\`yaml
-    version: '3.8'
+### Phase 6: Install and Configure Open WebUI
 
-    ````
+  - [ ] **1. Create Project Directory:**
+    Keep your configuration organized in a dedicated folder.
+
+    ```bash
+    mkdir ~/open-webui && cd ~/open-webui
+    ```
+
+  - [ ] **2. Create `docker-compose.yml` File:**
+    Create the file that defines your WebUI service.
+
+    ```bash
+    nano docker-compose.yml
+    ```
+
+    Paste the **exact** content below into the file:
+
+    ```yaml
     services:
       open-webui:
         image: ghcr.io/open-webui/open-webui:main
         container_name: open-webui
         ports:
-          - "3000:8080"
-        volumes:
-          - open-webui:/app/backend/data
+          - "8080:8080"
         extra_hosts:
           - "host.docker.internal:host-gateway"
+        volumes:
+          - open-webui:/app/backend/data
         restart: unless-stopped
 
     volumes:
       open-webui: {}
     ```
-    ````
 
   - [ ] **3. Launch Open WebUI:**
-    From inside the `~/open-webui` directory, run this command. It will read your `docker-compose.yml` file and start the service in the background (`-d`).
-    ` bash docker compose up -d  `
+    From inside the `~/open-webui` directory, start the service in the background.
 
-  - [ ] **4. Check Container Status:**
-    Ensure the container is running without errors.
-    ` bash docker ps  `
+    ```bash
+    docker compose up -d
+    ```
 
-  - [ ] **5. Initial Setup:**
-    Open a web browser and navigate to `http://<your-server-ip>:3000`. Create your admin account. The UI should automatically detect and display the Ollama models you downloaded.
+  - [ ] **4. Configure WebUI Connection:**
 
-### Phase 6: Enable Remote Access
+      * Open a web browser and navigate to `http://<your_server_ip>:8080`.
+      * Create your admin account when prompted.
+      * Go to **Settings** ⚙️ \> **Connections**.
+      * Under the **Ollama API** section, enter the following URL:
+        `http://host.docker.internal:11434`
+      * Save the connection.
 
-  - [ ] **1. Choose Your Method:**
-    \* **For private access:** Use [Tailscale](https://tailscale.com/kb/1017/install/).
-    \* **For public access:** Use a [Cloudflare Tunnel](https://www.google.com/search?q=https://developers.cloudflare.com/zerotrust/get-started/get-started-os/linux-and-freebsd/).
-
-  - [ ] **2. Install and Configure:**
-    Follow the official guide for your chosen method on Arch Linux. When configuring the tunnel, point it to the Open WebUI service at `http://localhost:3000`.
-
-### Phase 7: Final Verification
-
-  - [ ] **1. Reboot the Server:**
-    Perform a final reboot to test the full automation.
-    ` bash sudo reboot  `
-
-  - [ ] **2. Test Everything:**
-    After the server is back online, wait a minute, then:
-    \* Try accessing your Open WebUI instance through its Tailscale or Cloudflare address from another device (your phone or laptop).
-    \* Select one of the models and start a chat.
-
+  - [ ] **5. Start Chatting:**
+    Navigate back to the main chat interface. Your downloaded models should now appear in the **"Select a model"** dropdown. Enjoy\! 🚀
