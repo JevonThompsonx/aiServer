@@ -6,8 +6,8 @@ on:
   pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: read
+# NOTE: no top-level `permissions:` block. Forgejo does not implement it and
+# warns "has a permissions field which is not supported ... and will be ignored".
 
 concurrency:
   group: ci-${{ forgejo.ref }}
@@ -20,4 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: validate compose
-        run: docker compose -f docker-compose.yml config --quiet
+        run: |
+          # compose files often reference env_file: .env, which is not
+          # committed; an empty placeholder keeps `config` valid.
+          [ -f .env ] || touch .env
+          docker compose -f docker-compose.yml config --quiet
